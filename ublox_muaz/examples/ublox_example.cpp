@@ -1,4 +1,5 @@
 #define BUF_SIZE 600
+#define AVG_SIZE 10
 #include "ublox/ublox.h"
 #include <iostream>
 #include <fstream>
@@ -47,6 +48,11 @@ bool StartDataLogging(std::string filename) {
 void PseudorangeData(ublox::RawMeas raw_meas, double time_stamp) {
     try {
 
+         static double dopErrors[32][AVG_SIZE];
+         static unsigned int timeIndex = 0;
+         double avgErrors[32];
+         double overallAverage;
+         double satCount;
 
          static double measBuffer[32][BUF_SIZE];
          static double calcBuffer[32][BUF_SIZE];
@@ -77,11 +83,35 @@ void PseudorangeData(ublox::RawMeas raw_meas, double time_stamp) {
         data_file_ << std::endl;
         data_file_ << fixed << "DOPPLER" << "\t" << (double)raw_meas.iTow;
 
-	// Calculate median prior
+	// Calculate median and average prior
+    satCount = 0;
+    overallAverage = 0;
 	vecDop.clear();
 	for(int ii=0;ii<raw_meas.numSV; ii++) 
 		if (myPos.ephemerisExists(raw_meas.rawmeasreap[ii].svid) && !raw_meas.rawmeasreap[ii].gnssId)
-                	vecDop.push_back(myPos.calcDoppler(raw_meas.rawmeasreap[ii].svid, (double)raw_meas.iTow, myPos) - raw_meas.rawmeasreap[ii].doppler);
+        {
+                    satCount++;
+                    double error = myPos.calcDoppler(raw_meas.rawmeasreap[ii].svid, (double)raw_meas.iTow, myPos) - raw_meas.rawmeasreap[ii].doppler;
+                	vecDop.push_back(error);
+
+                    // Averaging
+                    dopErrors[ii][timeIndex % AVG_SIZE] = error;
+                    avgErrors[ii] = 0;
+                    for (int jj = 0; jj < AVG_SIZE && jj <= timeIndex; jj++)
+                    {
+                        avgErrors[ii] += dopErrors[ii][jj];
+                    }
+                    if (timeIndex < AVG_SIZE)
+                        avgErrors[ii] /= (timeIndex + 1);
+                    else
+                        avgErrors[ii] /= AVG_SIZE;
+
+                    overallAverage += avgErrors[ii];
+
+        }
+    overallAverage /= satCount;
+
+    timeIndex++;
 	sort(vecDop.begin(), vecDop.end());
 	prevMedian = vecDop.at((int)(vecDop.size() / 2));
         
@@ -102,7 +132,8 @@ void PseudorangeData(ublox::RawMeas raw_meas, double time_stamp) {
 
                 double calcDoppler = myPos.calcDoppler(raw_meas.rawmeasreap[ii].svid, (double)raw_meas.iTow, myPos);
                 double measDoppler = raw_meas.rawmeasreap[ii].doppler;
-		measDoppler += prevMedian;
+		//measDoppler += prevMedian;
+        measDoppler += overallAverage;
 
                // Write to file
                 doppler_file_ << setw(3) << svid << " ";
@@ -154,6 +185,7 @@ void PseudorangeData(ublox::RawMeas raw_meas, double time_stamp) {
 	clearSats = 0;
 	sort(vecDop.begin(), vecDop.end());
 	cout << "MEDIAN ERROR: " << vecDop.at((int)(vecDop.size() / 2)) << endl;
+    cout << "AVERAGE ERROR: " << overallAverage << endl;
     //prevMedian = vecDop.at((int)(vecDop.size() / 2));
 	for (int r = 0; r < vecDop.size(); r++)
 		if (vecDop.at(r) >= vecDop.at((int)(vecDop.size() / 2)) - 25 &&

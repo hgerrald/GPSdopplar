@@ -52,7 +52,8 @@ void PseudorangeData(ublox::RawMeas raw_meas, double time_stamp) {
          static unsigned int timeIndex = 0;
          double avgErrors[32];
          double overallAverage;
-         double satCount;
+         int satCount, avgCount;
+         
 
          static double measBuffer[32][BUF_SIZE];
          static double calcBuffer[32][BUF_SIZE];
@@ -66,6 +67,7 @@ void PseudorangeData(ublox::RawMeas raw_meas, double time_stamp) {
 	 vector<double> vecDop;
          int clearSats;
          static double prevMedian = 0;
+
 
         
         data_file_ << fixed << "RANGE" << "\t" << (signed long)raw_meas.iTow;
@@ -85,6 +87,7 @@ void PseudorangeData(ublox::RawMeas raw_meas, double time_stamp) {
 
 	// Calculate median and average prior
     satCount = 0;
+    
     overallAverage = 0;
 	vecDop.clear();
 	for(int ii=0;ii<raw_meas.numSV; ii++) 
@@ -97,14 +100,19 @@ void PseudorangeData(ublox::RawMeas raw_meas, double time_stamp) {
                     // Averaging
                     dopErrors[ii][timeIndex % AVG_SIZE] = error;
                     avgErrors[ii] = 0;
+                    avgCount = 0;
                     for (int jj = 0; jj < AVG_SIZE && jj <= timeIndex; jj++)
                     {
+                        if (dopErrors[ii][jj] != 0)
+                            avgCount++;
                         avgErrors[ii] += dopErrors[ii][jj];
                     }
+                    avgErrors[ii] /= avgCount;
+                    /*
                     if (timeIndex < AVG_SIZE)
                         avgErrors[ii] /= (timeIndex + 1);
                     else
-                        avgErrors[ii] /= AVG_SIZE;
+                        avgErrors[ii] /= AVG_SIZE; */
 
                     overallAverage += avgErrors[ii];
 
@@ -191,7 +199,7 @@ void PseudorangeData(ublox::RawMeas raw_meas, double time_stamp) {
 		if (vecDop.at(r) >= vecDop.at((int)(vecDop.size() / 2)) - 25 &&
 		    vecDop.at(r) <= vecDop.at((int)(vecDop.size() / 2)) + 25 )
 			clearSats += 1;
-	cout << "CLEAR SATELLITES (MEDIAN METHOD): " << clearSats << endl;
+	//cout << "CLEAR SATELLITES (MEDIAN METHOD): " << clearSats << endl;
         data_file_ << std::endl;
         data_file_ << fixed << "CNO" << "\t" << (signed long)raw_meas.iTow;
         for(int ii=0;ii<raw_meas.numSV; ii++) {
